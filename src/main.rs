@@ -270,6 +270,10 @@ fn handle_ui_event(
         UiEvent::CycleMode => {
             state.mode = state.mode.next();
         }
+        UiEvent::CycleRecordSource => {
+            state.record_source = state.record_source.next();
+            let _ = audio_cmd_tx.try_send(AudioCmd::SetRecordSource(state.record_source));
+        }
         UiEvent::SetLevel(track, delta) => {
             if track < TRACK_COUNT {
                 let new_level = (state.track_displays[track].level + delta).clamp(0.0, 1.0);

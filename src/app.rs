@@ -1,5 +1,5 @@
 use crate::constants::TRACK_COUNT;
-use crate::messages::{TrackDisplay, TransportDisplay};
+use crate::messages::{RecordSource, TrackDisplay, TransportDisplay};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -61,6 +61,8 @@ pub struct AppState {
     pub effect_names: [[String; 3]; TRACK_COUNT],
     /// Effect bypassed per track per slot
     pub effect_bypassed: [[bool; 3]; TRACK_COUNT],
+    /// Recording source
+    pub record_source: RecordSource,
 }
 
 impl AppState {
@@ -86,6 +88,7 @@ impl AppState {
             waveform_data: [vec![], vec![], vec![], vec![]],
             effect_names: Default::default(),
             effect_bypassed: Default::default(),
+            record_source: RecordSource::All,
         }
     }
 

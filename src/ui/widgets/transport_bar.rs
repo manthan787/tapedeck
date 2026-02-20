@@ -3,13 +3,14 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::Widget;
 
-use crate::messages::TransportDisplay;
+use crate::messages::{RecordSource, TransportDisplay};
 use crate::ui::theme;
 
 pub struct TransportBarWidget {
     pub state: TransportDisplay,
     pub position: String,
     pub armed_track: Option<usize>,
+    pub record_source: RecordSource,
 }
 
 impl Widget for TransportBarWidget {
@@ -39,15 +40,16 @@ impl Widget for TransportBarWidget {
             Style::default().fg(theme::ACCENT),
         );
 
-        // Armed track indicator
+        // Armed track + source indicator
+        let mut x = area.x + 28;
         if let Some(track) = self.armed_track {
             let arm_str = format!("ARM:T{}", track + 1);
-            buf.set_string(
-                area.x + 28,
-                y,
-                &arm_str,
-                Style::default().fg(theme::RECORD_RED),
-            );
+            buf.set_string(x, y, &arm_str, Style::default().fg(theme::RECORD_RED));
+            x += arm_str.len() as u16 + 1;
         }
+
+        // Recording source
+        let src_str = format!("SRC:{}", self.record_source.label());
+        buf.set_string(x, y, &src_str, Style::default().fg(theme::ACCENT));
     }
 }

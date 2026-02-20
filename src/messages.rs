@@ -1,9 +1,39 @@
+/// Recording source selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordSource {
+    Mic,
+    Synth,
+    Drum,
+    All,
+}
+
+impl RecordSource {
+    pub fn next(self) -> Self {
+        match self {
+            RecordSource::Mic => RecordSource::Synth,
+            RecordSource::Synth => RecordSource::Drum,
+            RecordSource::Drum => RecordSource::All,
+            RecordSource::All => RecordSource::Mic,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RecordSource::Mic => "MIC",
+            RecordSource::Synth => "SYNTH",
+            RecordSource::Drum => "DRUM",
+            RecordSource::All => "ALL",
+        }
+    }
+}
+
 /// Messages from UI thread → Control thread
 #[derive(Debug, Clone)]
 pub enum UiEvent {
     TogglePlayPause,
     StartRecord,
     StopTransport,
+    CycleRecordSource,
     SelectTrack(usize),
     ArmTrack(usize),
     MuteTrack(usize),
@@ -62,6 +92,7 @@ pub enum AudioCmd {
     SetTapeSpeed(f32),
     ToggleEffect(usize, usize),
     SetEffectParam(usize, usize, usize, f32),
+    SetRecordSource(RecordSource),
 }
 
 /// Messages from Audio thread → Control thread

@@ -8,7 +8,7 @@ use crate::audio::mixer::MixerState;
 use crate::audio::transport::Transport;
 use crate::constants::{SAMPLE_RATE, TRACK_COUNT, TRACK_SAMPLES};
 use crate::effects;
-use crate::messages::{AudioCmd, AudioMsg};
+use crate::messages::{AudioCmd, AudioMsg, RecordSource};
 use crate::sequencer::clock::SequencerClock;
 use crate::sequencer::drum_kit::DrumKit;
 use crate::synth::engines;
@@ -122,6 +122,9 @@ impl AudioEngine {
         // Tape simulation
         let mut tape_sim = TapeSimulation::new();
 
+        // Recording source
+        let mut record_source = RecordSource::All;
+
         let msg_tx_out = msg_tx.clone();
 
         let output_stream = output_device.build_output_stream(
@@ -196,6 +199,9 @@ impl AudioEngine {
                                 effect_chains[track][slot].set_param(param, val);
                             }
                         }
+                        AudioCmd::SetRecordSource(src) => {
+                            record_source = src;
+                        }
                     }
                 }
 
@@ -238,22 +244,28 @@ impl AudioEngine {
                     }
                     let drum_sample = drum_kit.process();
 
-                    // --- Recording: write mic/synth/drum to armed track ---
+                    // --- Recording: write selected source to armed track ---
                     if let Some(rec_track) = transport.recording_track {
                         if transport.position < TRACK_SAMPLES {
                             let mut rec_sample = 0.0f32;
 
                             // Mic input
-                            if mic_read_pos < mic_samples.len() {
-                                rec_sample += mic_samples[mic_read_pos];
-                                mic_read_pos += 1;
+                            if matches!(record_source, RecordSource::Mic | RecordSource::All) {
+                                if mic_read_pos < mic_samples.len() {
+                                    rec_sample += mic_samples[mic_read_pos];
+                                    mic_read_pos += 1;
+                                }
                             }
 
-                            // Add synth output to recording
-                            rec_sample += synth_sample;
+                            // Synth output
+                            if matches!(record_source, RecordSource::Synth | RecordSource::All) {
+                                rec_sample += synth_sample;
+                            }
 
-                            // Add drum output to recording
-                            rec_sample += drum_sample;
+                            // Drum output
+                            if matches!(record_source, RecordSource::Drum | RecordSource::All) {
+                                rec_sample += drum_sample;
+                            }
 
                             bufs.tracks[rec_track].data[transport.position] = rec_sample;
                             let current_len = bufs.tracks[rec_track]
