@@ -1,6 +1,6 @@
 # Tapedeck
 
-**Your terminal just learned how to make mixtapes.**
+**A 4-track studio that fits inside your terminal.**
 
 A terminal-based 4-track cassette recorder inspired by the Teenage Engineering OP-1. Record from your mic, layer synthesizers, program drum beats, and mix it all down — with animated spinning reels, VU meters, and that warm tape sound. Built in Rust.
 
