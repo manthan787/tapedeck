@@ -116,6 +116,8 @@ impl AudioEngine {
         let mut drum_kit = DrumKit::new();
         let mut seq_clock = SequencerClock::new(120.0);
         let mut drum_patterns = [[false; 16]; 6];
+        // Free-running sample counter for drum preview when transport is stopped
+        let mut free_counter: usize = 0;
 
         // Tape simulation
         let mut tape_sim = TapeSimulation::new();
@@ -218,18 +220,23 @@ impl AudioEngine {
                     let synth_sample = synth_buf[0];
 
                     // --- Drum sequencer ---
-                    let mut drum_sample = 0.0f32;
-                    if playing {
-                        let (step, new_step) = seq_clock.tick(transport.position);
-                        if new_step {
-                            for inst in 0..6 {
-                                if drum_patterns[inst][step] {
-                                    drum_kit.trigger(inst);
-                                }
+                    // Runs against tape position when playing, free-running when stopped
+                    let seq_pos = if playing {
+                        transport.position
+                    } else {
+                        free_counter
+                    };
+                    free_counter = free_counter.wrapping_add(1);
+
+                    let (step, new_step) = seq_clock.tick(seq_pos);
+                    if new_step {
+                        for inst in 0..6 {
+                            if drum_patterns[inst][step] {
+                                drum_kit.trigger(inst);
                             }
                         }
-                        drum_sample = drum_kit.process();
                     }
+                    let drum_sample = drum_kit.process();
 
                     // --- Recording: write mic/synth/drum to armed track ---
                     if let Some(rec_track) = transport.recording_track {
@@ -302,11 +309,11 @@ impl AudioEngine {
 
                         transport.advance();
                     } else {
-                        // When stopped, still output synth for live playing
-                        let left = synth_sample * 0.5;
-                        let right = synth_sample * 0.5;
-                        frame[0] = left;
-                        frame[1] = right;
+                        // When stopped, still output synth + drums for live preview
+                        let left = (synth_sample + drum_sample) * 0.5;
+                        let right = (synth_sample + drum_sample) * 0.5;
+                        frame[0] = left.clamp(-1.0, 1.0);
+                        frame[1] = right.clamp(-1.0, 1.0);
                         master_meter_l.push(left);
                         master_meter_r.push(right);
                     }

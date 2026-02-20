@@ -7,18 +7,26 @@ use crate::messages::UiEvent;
 pub fn handle_key(key: KeyEvent, mode: AppMode, selected_track: usize) -> Option<UiEvent> {
     // Global keys (all modes)
     match key.code {
-        KeyCode::Char('q') if key.modifiers.is_empty() => return Some(UiEvent::Quit),
+        // Quit: Esc always works. Q quits except in Synth mode (where it's a piano key).
+        KeyCode::Esc => return Some(UiEvent::Quit),
+        KeyCode::Char('q') if key.modifiers.is_empty() && mode != AppMode::Synth => {
+            return Some(UiEvent::Quit);
+        }
         KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(UiEvent::SaveProject);
         }
         KeyCode::Char(' ') => return Some(UiEvent::TogglePlayPause),
         KeyCode::Tab => return Some(UiEvent::CycleMode),
+        // Stop + rewind to start
+        KeyCode::Enter => return Some(UiEvent::StopTransport),
         _ => {}
     }
 
-    // Track selection (1-4) in non-synth modes
+    // Track selection (1-4) only in Tape and Mixer modes
     match key.code {
-        KeyCode::Char(c @ '1'..='4') if mode != AppMode::Synth => {
+        KeyCode::Char(c @ '1'..='4')
+            if mode == AppMode::Tape || mode == AppMode::Mixer =>
+        {
             let track = (c as usize) - ('1' as usize);
             return Some(UiEvent::SelectTrack(track));
         }
@@ -49,9 +57,14 @@ fn handle_tape_key(key: KeyEvent, selected_track: usize) -> Option<UiEvent> {
 }
 
 fn handle_synth_key(key: KeyEvent) -> Option<UiEvent> {
+    // R = record (not a piano key — use Synth mode to record synth to tape)
+    if key.code == KeyCode::Char('r') {
+        return Some(UiEvent::StartRecord);
+    }
+
     // QWERTY piano mapping
     // Bottom row: Z=C3, S=C#3, X=D3, D=D#3, C=E3, V=F3, G=F#3, B=G3, H=G#3, N=A3, J=A#3, M=B3
-    // Top row: Q=C4, 2=C#4, W=D4, 3=D#4, E=E4, R=F4, 5=F#4, T=G4, 6=G#4, Y=A4, 7=A#4, U=B4
+    // Top row: Q=C4, 2=C#4, W=D4, 3=D#4, E=E4, 4=F4, 5=F#4, T=G4, 6=G#4, Y=A4, 7=A#4, U=B4
     let note = match key.code {
         // C3 = MIDI 48
         KeyCode::Char('z') => Some(48u8),
@@ -72,7 +85,7 @@ fn handle_synth_key(key: KeyEvent) -> Option<UiEvent> {
         KeyCode::Char('w') => Some(62),
         KeyCode::Char('3') => Some(63),
         KeyCode::Char('e') => Some(64),
-        KeyCode::Char('r') => Some(65),
+        KeyCode::Char('4') => Some(65), // was 'r', moved to '4' so R can record
         KeyCode::Char('5') => Some(66),
         KeyCode::Char('t') => Some(67),
         KeyCode::Char('6') => Some(68),
@@ -87,16 +100,27 @@ fn handle_synth_key(key: KeyEvent) -> Option<UiEvent> {
     }
 
     match key.code {
-        KeyCode::Left => Some(UiEvent::SelectEngine(0)),  // prev
-        KeyCode::Right => Some(UiEvent::SelectEngine(1)), // next (handled as delta in control)
-        KeyCode::Up => Some(UiEvent::SetParam(0, 0.05)),  // increment
+        KeyCode::Left => Some(UiEvent::SelectEngine(0)),   // prev
+        KeyCode::Right => Some(UiEvent::SelectEngine(1)),  // next
+        KeyCode::Up => Some(UiEvent::SetParam(0, 0.05)),   // increment
         KeyCode::Down => Some(UiEvent::SetParam(0, -0.05)), // decrement
         _ => None,
     }
 }
 
 fn handle_drum_key(key: KeyEvent) -> Option<UiEvent> {
-    // Z-M row toggles steps 0-11, and comma/period/slash for 12-14, plus extra
+    // Instrument selection: 1-6
+    match key.code {
+        KeyCode::Char('1') => return Some(UiEvent::SelectInstrument(0)),
+        KeyCode::Char('2') => return Some(UiEvent::SelectInstrument(1)),
+        KeyCode::Char('3') => return Some(UiEvent::SelectInstrument(2)),
+        KeyCode::Char('4') => return Some(UiEvent::SelectInstrument(3)),
+        KeyCode::Char('5') => return Some(UiEvent::SelectInstrument(4)),
+        KeyCode::Char('6') => return Some(UiEvent::SelectInstrument(5)),
+        _ => {}
+    }
+
+    // Z-K row toggles steps 0-15
     let step = match key.code {
         KeyCode::Char('z') => Some(0usize),
         KeyCode::Char('x') => Some(1),
@@ -122,10 +146,6 @@ fn handle_drum_key(key: KeyEvent) -> Option<UiEvent> {
     }
 
     match key.code {
-        KeyCode::Char('1'..='4') => {
-            let inst = (key.code.to_string().parse::<usize>().unwrap_or(1)) - 1;
-            Some(UiEvent::SelectInstrument(inst))
-        }
         KeyCode::Up => Some(UiEvent::SetBpm(1.0)),
         KeyCode::Down => Some(UiEvent::SetBpm(-1.0)),
         KeyCode::Char('r') => Some(UiEvent::StartRecord),
@@ -149,8 +169,9 @@ fn handle_mixer_key(key: KeyEvent, selected_track: usize) -> Option<UiEvent> {
 pub fn key_hints(mode: AppMode) -> Vec<(&'static str, &'static str)> {
     let mut hints = vec![
         ("Space", "Play/Pause"),
+        ("Enter", "Stop"),
         ("Tab", "Mode"),
-        ("Q", "Quit"),
+        ("Esc", "Quit"),
     ];
 
     match mode {
@@ -170,7 +191,7 @@ pub fn key_hints(mode: AppMode) -> Vec<(&'static str, &'static str)> {
         }
         AppMode::Drum => {
             hints.insert(0, ("Z-K", "Steps"));
-            hints.insert(1, ("1-4", "Inst"));
+            hints.insert(1, ("1-6", "Inst"));
             hints.insert(2, ("↑/↓", "BPM"));
             hints.insert(3, ("R", "Record"));
         }

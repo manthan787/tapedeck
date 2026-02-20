@@ -64,7 +64,7 @@ impl View for SynthView {
 
         // Keyboard hint
         frame.render_widget(
-            Paragraph::new("  Z S X D C V G B H N J M  │  Q 2 W 3 E R 5 T 6 Y 7 U")
+            Paragraph::new("  Z S X D C V G B H N J M  │  Q 2 W 3 E 4 5 T 6 Y 7 U")
                 .style(Style::default().fg(theme::DIM)),
             chunks[2],
         );
