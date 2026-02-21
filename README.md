@@ -15,13 +15,31 @@ A terminal-based 4-track cassette recorder inspired by the Teenage Engineering O
 - **Mixer View** — 4-channel faders with pan, level, VU meters, mute/solo
 - **Project Save/Load** — Exports tracks as 32-bit float WAV files with JSON metadata
 
-## Quick Start
+## Install
 
-```
-cargo run
+**Download a binary** from the [latest release](https://github.com/manthan787/tapedeck/releases/latest):
+
+```bash
+# macOS (Apple Silicon)
+tar xzf tapedeck-v*-darwin-arm64.tar.gz
+./tapedeck
 ```
 
-Requires Rust 1.70+ and a working audio output device. Mic input is optional (the app warns but doesn't crash without one).
+**Install from source** (any platform with Rust 1.70+):
+
+```bash
+cargo install --git https://github.com/manthan787/tapedeck
+```
+
+**Build locally:**
+
+```bash
+git clone https://github.com/manthan787/tapedeck.git
+cd tapedeck
+cargo run --release
+```
+
+Requires a working audio output device. Mic input is optional (the app warns but doesn't crash without one).
 
 ## Controls
 
