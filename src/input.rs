@@ -15,6 +15,9 @@ pub fn handle_key(key: KeyEvent, mode: AppMode, selected_track: usize) -> Option
         KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(UiEvent::SaveProject);
         }
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(UiEvent::LoadProject("tapedeck_project".to_string()));
+        }
         KeyCode::Char(' ') => return Some(UiEvent::TogglePlayPause),
         KeyCode::Tab => return Some(UiEvent::CycleMode),
         // Stop + rewind to start
@@ -172,6 +175,8 @@ pub fn key_hints(mode: AppMode) -> Vec<(&'static str, &'static str)> {
     let mut hints = vec![
         ("Space", "Play/Pause"),
         ("Enter", "Stop"),
+        ("Ctrl+S", "Save"),
+        ("Ctrl+L", "Load"),
         ("I", "Input Src"),
         ("Tab", "Mode"),
         ("Esc", "Quit"),

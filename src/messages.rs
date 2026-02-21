@@ -99,6 +99,7 @@ pub enum AudioCmd {
 #[derive(Debug, Clone)]
 pub enum AudioMsg {
     Position(usize),
+    CurrentStep(usize),
     Levels([f32; 4]),
     Peaks([f32; 4]),
     MasterLevel(f32, f32),

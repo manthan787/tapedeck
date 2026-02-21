@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::constants::TRACK_SAMPLES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportState {
@@ -67,7 +67,7 @@ impl Transport {
     }
 
     pub fn seek(&mut self, pos: usize) {
-        self.position = pos;
+        self.position = pos.min(TRACK_SAMPLES.saturating_sub(1));
     }
 
     pub fn advance(&mut self) -> bool {
@@ -85,5 +85,24 @@ impl Transport {
 
     pub fn is_playing(&self) -> bool {
         matches!(self.state, TransportState::Playing | TransportState::Recording)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seek_clamps_to_track_bounds() {
+        let mut transport = Transport::new();
+        transport.seek(TRACK_SAMPLES + 10_000);
+        assert_eq!(transport.position, TRACK_SAMPLES - 1);
+    }
+
+    #[test]
+    fn seek_keeps_valid_positions() {
+        let mut transport = Transport::new();
+        transport.seek(12_345);
+        assert_eq!(transport.position, 12_345);
     }
 }

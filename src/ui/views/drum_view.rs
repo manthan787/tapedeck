@@ -44,7 +44,7 @@ impl View for DrumView {
 
         // Controls
         frame.render_widget(
-            Paragraph::new("  Z-K:Toggle Steps  1-4:Instrument  ↑/↓:BPM  R:Record")
+            Paragraph::new("  Z-K:Toggle Steps  1-6:Instrument  ↑/↓:BPM  R:Record")
                 .style(Style::default().fg(theme::DIM)),
             chunks[2],
         );

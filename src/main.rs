@@ -94,6 +94,7 @@ fn run_ui_loop(
         while let Ok(msg) = audio_msg_rx.try_recv() {
             match msg {
                 AudioMsg::Position(pos) => state.position = pos,
+                AudioMsg::CurrentStep(step) => state.current_step = step,
                 AudioMsg::Levels(levels) => state.levels = levels,
                 AudioMsg::Peaks(peaks) => state.peaks = peaks,
                 AudioMsg::MasterLevel(l, r) => state.master_level = (l, r),
@@ -214,6 +215,7 @@ fn handle_ui_event(
         UiEvent::StopTransport => {
             state.transport = TransportDisplay::Stopped;
             state.position = 0;
+            state.current_step = 0;
             let _ = audio_cmd_tx.try_send(AudioCmd::Stop);
         }
         UiEvent::SelectTrack(track) => {
@@ -251,7 +253,8 @@ fn handle_ui_event(
             }
         }
         UiEvent::Seek(delta) => {
-            let new_pos = (state.position as i64 + delta).max(0) as usize;
+            let max_pos = TRACK_SAMPLES.saturating_sub(1) as i64;
+            let new_pos = (state.position as i64 + delta).clamp(0, max_pos) as usize;
             state.position = new_pos;
             let _ = audio_cmd_tx.try_send(AudioCmd::Seek(new_pos));
         }
@@ -337,7 +340,16 @@ fn handle_ui_event(
         }
         UiEvent::SaveProject => {
             if let Ok(bufs) = buffers.lock() {
-                let meta = project::metadata::ProjectMeta::new("tapedeck_project");
+                let mut meta = project::metadata::ProjectMeta::new("tapedeck_project");
+                meta.bpm = state.bpm;
+                for i in 0..TRACK_COUNT {
+                    let td = state.track_displays[i];
+                    meta.tracks[i].level = td.level;
+                    meta.tracks[i].pan = td.pan;
+                    meta.tracks[i].muted = td.muted;
+                    meta.tracks[i].solo = td.solo;
+                    meta.tracks[i].armed = td.armed;
+                }
                 let dir = std::path::Path::new("tapedeck_project");
                 if let Err(e) = project::save::save_project(dir, &meta, &bufs) {
                     eprintln!("Save error: {}", e);
@@ -348,7 +360,41 @@ fn handle_ui_event(
             if let Ok(mut bufs) = buffers.lock() {
                 let dir = std::path::Path::new(&path);
                 match project::load::load_project(dir, &mut bufs) {
-                    Ok(_meta) => {}
+                    Ok(meta) => {
+                        state.bpm = meta.bpm.clamp(40.0, 300.0);
+                        let _ = audio_cmd_tx.try_send(AudioCmd::SetBpm(state.bpm));
+
+                        let mut armed_assigned = false;
+                        for i in 0..TRACK_COUNT {
+                            if let Some(track_meta) = meta.tracks.get(i) {
+                                let level = track_meta.level.clamp(0.0, 1.0);
+                                let pan = track_meta.pan.clamp(-1.0, 1.0);
+                                let muted = track_meta.muted;
+                                let solo = track_meta.solo;
+                                let armed = track_meta.armed && !armed_assigned;
+                                if armed {
+                                    armed_assigned = true;
+                                }
+
+                                state.track_displays[i].level = level;
+                                state.track_displays[i].pan = pan;
+                                state.track_displays[i].muted = muted;
+                                state.track_displays[i].solo = solo;
+                                state.track_displays[i].armed = armed;
+
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetLevel(i, level));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetPan(i, pan));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetMute(i, muted));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetSolo(i, solo));
+                            } else {
+                                state.track_displays[i] = TrackDisplay::default();
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetLevel(i, state.track_displays[i].level));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetPan(i, state.track_displays[i].pan));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetMute(i, state.track_displays[i].muted));
+                                let _ = audio_cmd_tx.try_send(AudioCmd::SetSolo(i, state.track_displays[i].solo));
+                            }
+                        }
+                    }
                     Err(e) => eprintln!("Load error: {}", e),
                 }
             }

@@ -138,6 +138,7 @@ impl AudioEngine {
                         AudioCmd::Stop => {
                             transport.stop();
                             seq_clock.reset();
+                            let _ = msg_tx_out.try_send(AudioMsg::CurrentStep(0));
                         }
                         AudioCmd::Record(track) => transport.record(track),
                         AudioCmd::StopRecord => transport.stop_record(),
@@ -214,7 +215,9 @@ impl AudioEngine {
                 }
                 let mut mic_read_pos = 0;
 
-                let mut bufs = buffers_out.lock().unwrap();
+                // Never block/panic in the realtime callback. If buffers are contended,
+                // we skip tape read/write for this callback chunk and keep live monitoring running.
+                let mut bufs_guard = buffers_out.try_lock().ok();
 
                 // --- Generate output frame by frame ---
                 for frame in data.chunks_mut(2) {
@@ -236,6 +239,7 @@ impl AudioEngine {
 
                     let (step, new_step) = seq_clock.tick(seq_pos);
                     if new_step {
+                        let _ = msg_tx_out.try_send(AudioMsg::CurrentStep(step));
                         for inst in 0..6 {
                             if drum_patterns[inst][step] {
                                 drum_kit.trigger(inst);
@@ -267,14 +271,16 @@ impl AudioEngine {
                                 rec_sample += drum_sample;
                             }
 
-                            bufs.tracks[rec_track].data[transport.position] = rec_sample;
-                            let current_len = bufs.tracks[rec_track]
-                                .len
-                                .load(std::sync::atomic::Ordering::Relaxed);
-                            if transport.position >= current_len {
-                                bufs.tracks[rec_track]
+                            if let Some(bufs) = bufs_guard.as_mut() {
+                                bufs.tracks[rec_track].data[transport.position] = rec_sample;
+                                let current_len = bufs.tracks[rec_track]
                                     .len
-                                    .store(transport.position + 1, std::sync::atomic::Ordering::Relaxed);
+                                    .load(std::sync::atomic::Ordering::Relaxed);
+                                if transport.position >= current_len {
+                                    bufs.tracks[rec_track]
+                                        .len
+                                        .store(transport.position + 1, std::sync::atomic::Ordering::Relaxed);
+                                }
                             }
                         }
                     }
@@ -283,7 +289,11 @@ impl AudioEngine {
                     if playing {
                         let mut track_samples = [0.0f32; TRACK_COUNT];
                         for t in 0..TRACK_COUNT {
-                            let mut sample = bufs.tracks[t].read(transport.position);
+                            let mut sample = if let Some(bufs) = bufs_guard.as_ref() {
+                                bufs.tracks[t].read(transport.position)
+                            } else {
+                                0.0
+                            };
 
                             // Apply per-track effects
                             if !effect_chains[t].is_empty() {
