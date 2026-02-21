@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleRate, StreamConfig};
 use crossbeam_channel::{Receiver, Sender};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use crate::audio::buffer::SharedBuffers;
@@ -14,6 +15,22 @@ use crate::sequencer::drum_kit::DrumKit;
 use crate::synth::engines;
 use crate::synth::SynthEngine;
 use crate::tape::simulation::TapeSimulation;
+
+fn detect_loop_end(buffers: &SharedBuffers, exclude_track: Option<usize>) -> Option<usize> {
+    let mut max_len = 0usize;
+    for (idx, track) in buffers.tracks.iter().enumerate() {
+        if Some(idx) == exclude_track {
+            continue;
+        }
+        let len = track.len.load(Ordering::Relaxed).min(TRACK_SAMPLES);
+        max_len = max_len.max(len);
+    }
+    (max_len > 0).then_some(max_len)
+}
+
+fn samples_per_beat(bpm: f32) -> usize {
+    ((SAMPLE_RATE as f32 * 60.0 / bpm.clamp(40.0, 300.0)) as usize).max(1)
+}
 
 struct LevelMeter {
     sum_sq: f32,
@@ -123,7 +140,19 @@ impl AudioEngine {
         let mut tape_sim = TapeSimulation::new();
 
         // Recording source
-        let mut record_source = RecordSource::All;
+        let mut record_source = RecordSource::Internal;
+
+        // Record count-in + metronome
+        let count_in_beats: usize = 4;
+        let click_len_samples: usize = (SAMPLE_RATE as usize / 40).max(1); // ~25ms click
+        let mut pending_record_track: Option<usize> = None;
+        let mut count_in_samples_remaining: usize = 0;
+        let mut count_in_samples_to_next_click: usize = 0;
+        let mut count_in_click_index: usize = 0;
+        let mut click_samples_remaining: usize = 0;
+        let mut click_phase: f64 = 0.0;
+        let mut click_freq: f64 = 1600.0;
+        let mut click_amp: f32 = 0.0;
 
         let msg_tx_out = msg_tx.clone();
 
@@ -133,15 +162,57 @@ impl AudioEngine {
                 // --- Process commands ---
                 while let Ok(cmd) = cmd_rx.try_recv() {
                     match cmd {
-                        AudioCmd::Play => transport.play(),
+                        AudioCmd::Play => {
+                            if transport.loop_enabled() {
+                                if let Ok(bufs) = buffers_out.try_lock() {
+                                    transport.set_loop_end(detect_loop_end(&bufs, None));
+                                }
+                            }
+                            transport.play()
+                        }
+                        AudioCmd::SetLoopEnabled(enabled) => {
+                            transport.set_loop_enabled(enabled);
+                            if enabled {
+                                if let Ok(bufs) = buffers_out.try_lock() {
+                                    transport.set_loop_end(detect_loop_end(&bufs, None));
+                                }
+                            }
+                        }
                         AudioCmd::Pause => transport.pause(),
                         AudioCmd::Stop => {
+                            pending_record_track = None;
+                            count_in_samples_remaining = 0;
+                            count_in_samples_to_next_click = 0;
+                            click_samples_remaining = 0;
                             transport.stop();
                             seq_clock.reset();
                             let _ = msg_tx_out.try_send(AudioMsg::CurrentStep(0));
                         }
-                        AudioCmd::Record(track) => transport.record(track),
-                        AudioCmd::StopRecord => transport.stop_record(),
+                        AudioCmd::Record(track) => {
+                            pending_record_track = Some(track);
+                            count_in_samples_remaining = samples_per_beat(seq_clock.bpm()) * count_in_beats;
+                            count_in_samples_to_next_click = 0; // first click immediately
+                            count_in_click_index = 0;
+                            click_samples_remaining = 0;
+
+                            if transport.loop_enabled() {
+                                if let Ok(bufs) = buffers_out.try_lock() {
+                                    transport.set_loop_end(detect_loop_end(&bufs, Some(track)));
+                                }
+                            }
+                            // Count-in always runs against playback for timing.
+                            transport.play();
+                        }
+                        AudioCmd::StopRecord => {
+                            pending_record_track = None;
+                            count_in_samples_remaining = 0;
+                            count_in_samples_to_next_click = 0;
+                            click_samples_remaining = 0;
+                            if transport.loop_enabled() && transport.loop_end().is_none() {
+                                transport.set_loop_end(Some(transport.position.min(TRACK_SAMPLES)));
+                            }
+                            transport.stop_record()
+                        }
                         AudioCmd::Seek(pos) => transport.seek(pos),
                         AudioCmd::SetLevel(track, val) => {
                             if track < TRACK_COUNT {
@@ -248,6 +319,42 @@ impl AudioEngine {
                     }
                     let drum_sample = drum_kit.process();
 
+                    // --- Record count-in ---
+                    if let Some(track) = pending_record_track {
+                        if count_in_samples_remaining == 0 {
+                            // Start recording at loop start for tighter overdubs.
+                            transport.seek(0);
+                            seq_clock.reset();
+                            let _ = msg_tx_out.try_send(AudioMsg::CurrentStep(0));
+                            transport.record(track);
+                            pending_record_track = None;
+                        } else {
+                            if count_in_samples_to_next_click == 0 {
+                                let accented = count_in_click_index % count_in_beats == 0;
+                                click_freq = if accented { 1900.0 } else { 1500.0 };
+                                click_amp = if accented { 0.32 } else { 0.22 };
+                                click_phase = 0.0;
+                                click_samples_remaining = click_len_samples;
+                                count_in_click_index = count_in_click_index.wrapping_add(1);
+                                count_in_samples_to_next_click = samples_per_beat(seq_clock.bpm());
+                            }
+                            count_in_samples_to_next_click =
+                                count_in_samples_to_next_click.saturating_sub(1);
+                            count_in_samples_remaining = count_in_samples_remaining.saturating_sub(1);
+                        }
+                    }
+
+                    let mut metronome_sample = 0.0f32;
+                    if click_samples_remaining > 0 {
+                        let env = click_samples_remaining as f32 / click_len_samples as f32;
+                        metronome_sample = (click_phase * std::f64::consts::TAU).sin() as f32 * click_amp * env;
+                        click_phase += click_freq / SAMPLE_RATE as f64;
+                        if click_phase >= 1.0 {
+                            click_phase -= 1.0;
+                        }
+                        click_samples_remaining = click_samples_remaining.saturating_sub(1);
+                    }
+
                     // --- Recording: write selected source to armed track ---
                     if let Some(rec_track) = transport.recording_track {
                         if transport.position < TRACK_SAMPLES {
@@ -262,12 +369,18 @@ impl AudioEngine {
                             }
 
                             // Synth output
-                            if matches!(record_source, RecordSource::Synth | RecordSource::All) {
+                            if matches!(
+                                record_source,
+                                RecordSource::Synth | RecordSource::All | RecordSource::Internal
+                            ) {
                                 rec_sample += synth_sample;
                             }
 
                             // Drum output
-                            if matches!(record_source, RecordSource::Drum | RecordSource::All) {
+                            if matches!(
+                                record_source,
+                                RecordSource::Drum | RecordSource::All | RecordSource::Internal
+                            ) {
                                 rec_sample += drum_sample;
                             }
 
@@ -312,13 +425,33 @@ impl AudioEngine {
 
                         let (mut left, mut right) = mixer.mix(&track_samples);
 
-                        // Add live synth monitoring (hear synth even when not recording)
-                        left += synth_sample * 0.5;
-                        right += synth_sample * 0.5;
+                        // Avoid doubling/echo: when a source is actively being recorded,
+                        // don't also add a parallel live monitor path for that same source.
+                        let recording = transport.recording_track.is_some();
+                        let monitor_synth = !recording
+                            || !matches!(
+                                record_source,
+                                RecordSource::Synth | RecordSource::All | RecordSource::Internal
+                            );
+                        let monitor_drum = !recording
+                            || !matches!(
+                                record_source,
+                                RecordSource::Drum | RecordSource::All | RecordSource::Internal
+                            );
 
-                        // Add live drum monitoring
-                        left += drum_sample * 0.5;
-                        right += drum_sample * 0.5;
+                        if monitor_synth {
+                            left += synth_sample * 0.5;
+                            right += synth_sample * 0.5;
+                        }
+
+                        if monitor_drum {
+                            left += drum_sample * 0.5;
+                            right += drum_sample * 0.5;
+                        }
+
+                        // Count-in click monitor
+                        left += metronome_sample;
+                        right += metronome_sample;
 
                         // Tape simulation
                         tape_sim.process_stereo(&mut left, &mut right);
@@ -332,8 +465,8 @@ impl AudioEngine {
                         transport.advance();
                     } else {
                         // When stopped, still output synth + drums for live preview
-                        let left = (synth_sample + drum_sample) * 0.5;
-                        let right = (synth_sample + drum_sample) * 0.5;
+                        let left = (synth_sample + drum_sample) * 0.5 + metronome_sample;
+                        let right = (synth_sample + drum_sample) * 0.5 + metronome_sample;
                         frame[0] = left.clamp(-1.0, 1.0);
                         frame[1] = right.clamp(-1.0, 1.0);
                         master_meter_l.push(left);

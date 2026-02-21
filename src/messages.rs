@@ -2,6 +2,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordSource {
     Mic,
+    /// Internal instruments mixed together (synth + drums)
+    Internal,
     Synth,
     Drum,
     All,
@@ -10,16 +12,18 @@ pub enum RecordSource {
 impl RecordSource {
     pub fn next(self) -> Self {
         match self {
-            RecordSource::Mic => RecordSource::Synth,
+            RecordSource::Internal => RecordSource::Synth,
             RecordSource::Synth => RecordSource::Drum,
-            RecordSource::Drum => RecordSource::All,
-            RecordSource::All => RecordSource::Mic,
+            RecordSource::Drum => RecordSource::Mic,
+            RecordSource::Mic => RecordSource::All,
+            RecordSource::All => RecordSource::Internal,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
             RecordSource::Mic => "MIC",
+            RecordSource::Internal => "INT",
             RecordSource::Synth => "SYNTH",
             RecordSource::Drum => "DRUM",
             RecordSource::All => "ALL",
@@ -31,6 +35,7 @@ impl RecordSource {
 #[derive(Debug, Clone)]
 pub enum UiEvent {
     TogglePlayPause,
+    ToggleLoop,
     StartRecord,
     StopTransport,
     CycleRecordSource,
@@ -74,6 +79,7 @@ pub enum UiEvent {
 pub enum AudioCmd {
     Play,
     Pause,
+    SetLoopEnabled(bool),
     Stop,
     Record(usize),
     StopRecord,

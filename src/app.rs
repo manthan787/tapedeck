@@ -33,6 +33,7 @@ pub struct AppState {
     pub mode: AppMode,
     pub selected_track: usize,
     pub transport: TransportDisplay,
+    pub loop_enabled: bool,
     pub position: usize,
     pub track_displays: [TrackDisplay; TRACK_COUNT],
     pub levels: [f32; TRACK_COUNT],
@@ -71,6 +72,7 @@ impl AppState {
             mode: AppMode::Tape,
             selected_track: 0,
             transport: TransportDisplay::Stopped,
+            loop_enabled: true,
             position: 0,
             track_displays: [TrackDisplay::default(); TRACK_COUNT],
             levels: [0.0; TRACK_COUNT],
@@ -88,7 +90,7 @@ impl AppState {
             waveform_data: [vec![], vec![], vec![], vec![]],
             effect_names: Default::default(),
             effect_bypassed: Default::default(),
-            record_source: RecordSource::All,
+            record_source: RecordSource::Internal,
         }
     }
 

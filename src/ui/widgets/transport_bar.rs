@@ -11,6 +11,7 @@ pub struct TransportBarWidget {
     pub position: String,
     pub armed_track: Option<usize>,
     pub record_source: RecordSource,
+    pub loop_enabled: bool,
 }
 
 impl Widget for TransportBarWidget {
@@ -51,5 +52,9 @@ impl Widget for TransportBarWidget {
         // Recording source
         let src_str = format!("SRC:{}", self.record_source.label());
         buf.set_string(x, y, &src_str, Style::default().fg(theme::ACCENT));
+        x += src_str.len() as u16 + 2;
+
+        let loop_str = if self.loop_enabled { "LOOP:ON" } else { "LOOP:OFF" };
+        buf.set_string(x, y, loop_str, Style::default().fg(theme::ACCENT));
     }
 }

@@ -95,6 +95,7 @@ impl View for TapeView {
             position: state.position_display(),
             armed_track: armed,
             record_source: state.record_source,
+            loop_enabled: state.loop_enabled,
         };
         frame.render_widget(transport, layout.transport);
     }

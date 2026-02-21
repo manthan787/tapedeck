@@ -18,11 +18,14 @@ pub fn handle_key(key: KeyEvent, mode: AppMode, selected_track: usize) -> Option
         KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(UiEvent::LoadProject("tapedeck_project".to_string()));
         }
+        KeyCode::Char('l') if key.modifiers.is_empty() => {
+            return Some(UiEvent::ToggleLoop);
+        }
         KeyCode::Char(' ') => return Some(UiEvent::TogglePlayPause),
         KeyCode::Tab => return Some(UiEvent::CycleMode),
         // Stop + rewind to start
         KeyCode::Enter => return Some(UiEvent::StopTransport),
-        // Cycle recording source: MIC → SYNTH → DRUM → ALL
+        // Cycle recording source: INT → SYNTH → DRUM → MIC → ALL
         KeyCode::Char('i') => return Some(UiEvent::CycleRecordSource),
         _ => {}
     }
@@ -174,6 +177,7 @@ fn handle_mixer_key(key: KeyEvent, selected_track: usize) -> Option<UiEvent> {
 pub fn key_hints(mode: AppMode) -> Vec<(&'static str, &'static str)> {
     let mut hints = vec![
         ("Space", "Play/Pause"),
+        ("L", "Loop"),
         ("Enter", "Stop"),
         ("Ctrl+S", "Save"),
         ("Ctrl+L", "Load"),

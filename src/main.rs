@@ -206,6 +206,10 @@ fn handle_ui_event(
                 let _ = audio_cmd_tx.try_send(AudioCmd::StopRecord);
             }
         },
+        UiEvent::ToggleLoop => {
+            state.loop_enabled = !state.loop_enabled;
+            let _ = audio_cmd_tx.try_send(AudioCmd::SetLoopEnabled(state.loop_enabled));
+        }
         UiEvent::StartRecord => {
             if let Some(track) = state.track_displays.iter().position(|t| t.armed) {
                 state.transport = TransportDisplay::Recording;
