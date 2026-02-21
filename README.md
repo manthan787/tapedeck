@@ -4,6 +4,10 @@
 
 A terminal-based 4-track cassette recorder inspired by the Teenage Engineering OP-1. Record from your mic, layer synthesizers, program drum beats, and mix it all down — with animated spinning reels, VU meters, and that warm tape sound. Built in Rust.
 
+
+https://github.com/user-attachments/assets/c2cdeb3b-6c61-4ab4-9edc-a9fd932a41dd
+
+
 ## Features
 
 - **4-Track Recording** — Record from mic input, overdub across 4 independent tracks with per-track arm/mute/solo
