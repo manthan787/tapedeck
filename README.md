@@ -1,4 +1,4 @@
-# Tapedeck
+# 🎛️ Tapedeck
 
 **A 4-track studio that fits inside your terminal.**
 
