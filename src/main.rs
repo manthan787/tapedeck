@@ -12,6 +12,7 @@ mod synth;
 mod tape;
 mod ui;
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -80,6 +81,11 @@ fn run_ui_loop(
 
     let frame_duration = Duration::from_millis(1000 / UI_FPS);
 
+    // Auto-release for synth notes: track note -> press time
+    // Most terminals don't support KeyEventKind::Release, so we auto-release after 200ms
+    let mut active_notes: HashMap<u8, Instant> = HashMap::new();
+    let note_duration = Duration::from_millis(200);
+
     // --- Main loop ---
     loop {
         let frame_start = Instant::now();
@@ -99,43 +105,25 @@ fn run_ui_loop(
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     if let Some(evt) = input::handle_key(key, state.mode, state.selected_track) {
+                        // Track NoteOn events for auto-release
+                        if let UiEvent::NoteOn(note, _) = &evt {
+                            active_notes.insert(*note, Instant::now());
+                        }
                         handle_ui_event(&mut state, evt, &audio_cmd_tx, &buffers);
                     }
                 }
-                // Handle note-off for synth keys on release
-                if key.kind == KeyEventKind::Release && state.mode == AppMode::Synth {
-                    let note = match key.code {
-                        crossterm::event::KeyCode::Char('z') => Some(48u8),
-                        crossterm::event::KeyCode::Char('s') => Some(49),
-                        crossterm::event::KeyCode::Char('x') => Some(50),
-                        crossterm::event::KeyCode::Char('d') => Some(51),
-                        crossterm::event::KeyCode::Char('c') => Some(52),
-                        crossterm::event::KeyCode::Char('v') => Some(53),
-                        crossterm::event::KeyCode::Char('g') => Some(54),
-                        crossterm::event::KeyCode::Char('b') => Some(55),
-                        crossterm::event::KeyCode::Char('h') => Some(56),
-                        crossterm::event::KeyCode::Char('n') => Some(57),
-                        crossterm::event::KeyCode::Char('j') => Some(58),
-                        crossterm::event::KeyCode::Char('m') => Some(59),
-                        crossterm::event::KeyCode::Char('q') => Some(60),
-                        crossterm::event::KeyCode::Char('2') => Some(61),
-                        crossterm::event::KeyCode::Char('w') => Some(62),
-                        crossterm::event::KeyCode::Char('3') => Some(63),
-                        crossterm::event::KeyCode::Char('e') => Some(64),
-                        crossterm::event::KeyCode::Char('4') => Some(65),
-                        crossterm::event::KeyCode::Char('5') => Some(66),
-                        crossterm::event::KeyCode::Char('t') => Some(67),
-                        crossterm::event::KeyCode::Char('6') => Some(68),
-                        crossterm::event::KeyCode::Char('y') => Some(69),
-                        crossterm::event::KeyCode::Char('7') => Some(70),
-                        crossterm::event::KeyCode::Char('u') => Some(71),
-                        _ => None,
-                    };
-                    if let Some(n) = note {
-                        let _ = audio_cmd_tx.try_send(AudioCmd::NoteOff(n));
-                    }
-                }
             }
+        }
+
+        // --- Auto-release synth notes after duration ---
+        let expired: Vec<u8> = active_notes
+            .iter()
+            .filter(|(_, pressed_at)| pressed_at.elapsed() >= note_duration)
+            .map(|(note, _)| *note)
+            .collect();
+        for note in expired {
+            active_notes.remove(&note);
+            let _ = audio_cmd_tx.try_send(AudioCmd::NoteOff(note));
         }
 
         if state.should_quit {

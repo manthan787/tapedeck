@@ -62,41 +62,41 @@ pub struct DrumKit {
 impl DrumKit {
     pub fn new() -> Self {
         let voices = vec![
-            // Kick
+            // Kick — long boom, ~300ms decay
             DrumVoice {
-                phase: 0.0, freq: 55.0, envelope: 0.0, decay: 0.997,
+                phase: 0.0, freq: 55.0, envelope: 0.0, decay: 0.99995,
                 active: false, noise_state: 1, noise_amount: 0.05,
-                pitch_env: 0.0, pitch_decay: 0.99, pitch_amount: 200.0,
+                pitch_env: 0.0, pitch_decay: 0.999, pitch_amount: 200.0,
             },
-            // Snare
+            // Snare — sharp crack + noise tail, ~200ms
             DrumVoice {
-                phase: 0.0, freq: 180.0, envelope: 0.0, decay: 0.993,
+                phase: 0.0, freq: 180.0, envelope: 0.0, decay: 0.99992,
                 active: false, noise_state: 2, noise_amount: 0.6,
-                pitch_env: 0.0, pitch_decay: 0.98, pitch_amount: 80.0,
+                pitch_env: 0.0, pitch_decay: 0.998, pitch_amount: 80.0,
             },
-            // Hi-hat
+            // Hi-hat — bright noise, ~80ms
             DrumVoice {
-                phase: 0.0, freq: 800.0, envelope: 0.0, decay: 0.985,
+                phase: 0.0, freq: 800.0, envelope: 0.0, decay: 0.99984,
                 active: false, noise_state: 3, noise_amount: 0.95,
-                pitch_env: 0.0, pitch_decay: 0.99, pitch_amount: 0.0,
+                pitch_env: 0.0, pitch_decay: 0.999, pitch_amount: 0.0,
             },
-            // Clap
+            // Clap — noise burst, ~120ms
             DrumVoice {
-                phase: 0.0, freq: 400.0, envelope: 0.0, decay: 0.991,
+                phase: 0.0, freq: 400.0, envelope: 0.0, decay: 0.99988,
                 active: false, noise_state: 4, noise_amount: 0.8,
-                pitch_env: 0.0, pitch_decay: 0.97, pitch_amount: 50.0,
+                pitch_env: 0.0, pitch_decay: 0.997, pitch_amount: 50.0,
             },
-            // Tom
+            // Tom — medium boom, ~250ms
             DrumVoice {
-                phase: 0.0, freq: 100.0, envelope: 0.0, decay: 0.996,
+                phase: 0.0, freq: 100.0, envelope: 0.0, decay: 0.99994,
                 active: false, noise_state: 5, noise_amount: 0.1,
-                pitch_env: 0.0, pitch_decay: 0.995, pitch_amount: 150.0,
+                pitch_env: 0.0, pitch_decay: 0.9995, pitch_amount: 150.0,
             },
-            // Rim
+            // Rim — short click, ~60ms
             DrumVoice {
-                phase: 0.0, freq: 600.0, envelope: 0.0, decay: 0.988,
+                phase: 0.0, freq: 600.0, envelope: 0.0, decay: 0.99980,
                 active: false, noise_state: 6, noise_amount: 0.3,
-                pitch_env: 0.0, pitch_decay: 0.96, pitch_amount: 100.0,
+                pitch_env: 0.0, pitch_decay: 0.996, pitch_amount: 100.0,
             },
         ];
 
